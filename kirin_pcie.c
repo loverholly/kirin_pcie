@@ -168,6 +168,8 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 		goto err_rel;
 	}
 
+	/* this should be alloc by pcie scan phase */
+	/* pci_assign_irq(pdev); */
 	kirin_pdev->ioremap_base = ioremap_base;
 	err = request_irq(pdev->irq, kirin_pcie_isr, IRQF_SHARED, DRIVER_NAME, pdev);
 	if (err) {
