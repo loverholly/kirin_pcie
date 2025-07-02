@@ -18,6 +18,7 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
+#include "kirin_pcie.h"
 
 #define DRIVER_NAME "kirin_pcie"
 
@@ -31,6 +32,8 @@ struct kirin_pdriver_dev {
 	struct fasync_struct *fasync_ptr;
 	struct cdev chrdev;
 	dev_t devnum;
+	size_t dma_in_size;
+	size_t dma_out_size;
 	dma_addr_t dma_addr_in;
 	dma_addr_t dma_addr_out;
 	void __iomem *cpuaddr_in;
@@ -79,11 +82,45 @@ static int kirin_device_async(int fd, struct file *file, int on)
 	return fasync_helper(fd, file, on, &kirin_pdev->fasync_ptr);
 }
 
+static long kirin_device_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	int ret = 0;
+	unsigned long virtaddr;
+	void __user *user_arg = (void __user *)arg;
+	struct kirin_pdriver_dev *kirin_pdev = filp->private_data;
+
+	switch (cmd) {
+	case KIRIN_GET_DMA_IN:
+		virtaddr = (unsigned long)kirin_pdev->cpuaddr_in;
+		printk(KERN_INFO "kirin pcie dmaaddr in get\n");
+		ret = copy_to_user(user_arg, &virtaddr, sizeof(virtaddr));
+		break;
+	case KIRIN_GET_DMA_OUT:
+		virtaddr = (unsigned long)kirin_pdev->cpuaddr_out;
+		printk(KERN_INFO "kirin pcie dmaaddr out get\n");
+		ret = copy_to_user(user_arg, &virtaddr, sizeof(virtaddr));
+		break;
+	case KIRIN_GET_BAR:
+		virtaddr = (unsigned long)kirin_pdev->ioremap_base;
+		printk(KERN_INFO "kirin pcie bar get\n");
+		ret = copy_to_user(user_arg, &virtaddr, sizeof(virtaddr));
+		break;
+	default:
+		ret = -EFAULT;
+		break;
+	}
+
+	return ret;
+}
+
+
 static struct file_operations fops = {
 	.owner = THIS_MODULE,
 	.open = kirin_device_open,
-	.unlocked_ioctl = NULL,
-	.compat_ioctl	= NULL,
+	.unlocked_ioctl = kirin_device_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl	= kirin_device_ioctl,
+#endif
 	.release = kirin_device_release,
 	.fasync = kirin_device_async,
 };
@@ -140,13 +177,15 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	}
 
 	/* alloc the dma recv buff and send buf */
-	kirin_pdev->cpuaddr_in = pci_alloc_consistent(pdev, 128*1024, &kirin_pdev->dma_addr_in);
+	kirin_pdev->dma_in_size = 128 * 1024;
+	kirin_pdev->cpuaddr_in = pci_alloc_consistent(pdev, kirin_pdev->dma_in_size, &kirin_pdev->dma_addr_in);
 	if (kirin_pdev->cpuaddr_in == NULL) {
 		dev_err(&pdev->dev, "alloc dma in buff failed!\n");
 		goto err_rel;
 	}
 
-	kirin_pdev->cpuaddr_out = pci_alloc_consistent(pdev, 64*1024*1024, &kirin_pdev->dma_addr_out);
+	kirin_pdev->dma_out_size = 64 * 1024 * 1024;
+	kirin_pdev->cpuaddr_out = pci_alloc_consistent(pdev, kirin_pdev->dma_out_size, &kirin_pdev->dma_addr_out);
 	if (kirin_pdev->cpuaddr_out == NULL) {
 		dev_err(&pdev->dev, "alloc dma out buff failed!\n");
 		goto err_rel;
@@ -201,8 +240,10 @@ static void kirin_pcie_remove(struct pci_dev *pdev)
 		iounmap(kirin_pdev->ioremap_base);
 
 	pci_release_regions(pdev);
-
 	pci_disable_device(pdev);
+
+	pci_free_consistent(pdev, kirin_pdev->dma_in_size, kirin_pdev->cpuaddr_in, kirin_pdev->dma_addr_in);
+	pci_free_consistent(pdev, kirin_pdev->dma_out_size, kirin_pdev->cpuaddr_out, kirin_pdev->dma_addr_out);
 	kfree(kirin_pdev);
 }
 
