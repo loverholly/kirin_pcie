@@ -18,20 +18,14 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
+#include <linux/idr.h>
 #include "kirin_pcie.h"
-
-#define DRIVER_NAME "kirin_pcie"
-
-static struct pci_device_id kirin_pcie_id_table[] = {
-	{ PCI_DEVICE(0x1234, 0x5678) },
-	{ 0, } /* 表结尾 */
-};
-MODULE_DEVICE_TABLE(pci, kirin_pcie_id_table);
 
 struct kirin_pdriver_dev {
 	struct fasync_struct *fasync_ptr;
 	struct cdev chrdev;
 	dev_t devnum;
+	int instance;
 	size_t dma_in_size;
 	size_t dma_out_size;
 	dma_addr_t dma_addr_in;
@@ -41,10 +35,21 @@ struct kirin_pdriver_dev {
 	void __iomem *ioremap_base;
 	struct class *class;
 	char name[40];
+	char driver_name[40];
 	int major;
 };
 
 #define PCIE_DEV_NAME "fpcie"
+#define DRIVER_NAME "kirin_pcie"
+#define PCIE_DEV_MINORS		(1U << MINORBITS)
+
+static struct pci_device_id kirin_pcie_id_table[] = {
+	{ PCI_DEVICE(0x1234, 0x5678) },
+	{ 0, } /* 表结尾 */
+};
+MODULE_DEVICE_TABLE(pci, kirin_pcie_id_table);
+
+static DEFINE_IDA(kirin_pcie_ida);
 
 static irqreturn_t kirin_pcie_isr(int irq, void *dev_id)
 {
@@ -128,13 +133,11 @@ static struct file_operations fops = {
 static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	int err;
+	int devnum;
 	resource_size_t io_addr;
 	void __iomem *ioremap_base = NULL;
-	__maybe_unused char class_name[40];
-	struct kirin_pdriver_dev *kirin_pdev;
-	static int devnum = -1;
+	struct kirin_pdriver_dev *kirin_pdev = NULL;
 
-	devnum++;
 	dev_info(&pdev->dev, "PCIe device probed\n");
 
 	/* enable pcie device */
@@ -191,9 +194,17 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 		goto err_rel;
 	}
 
+	kirin_pdev->instance = -1;
 	/* register the cdev */
+	err = ida_alloc(&kirin_pcie_ida, GFP_KERNEL);
+	if (err < 0) {
+		dev_err(&pdev->dev, "alloc kirin pcie cdev failed!\n");
+		goto err_rel;
+	}
+
+	kirin_pdev->instance = devnum = err;
 	sprintf(kirin_pdev->name, PCIE_DEV_NAME"%d", devnum);
-	err = alloc_chrdev_region(&kirin_pdev->devnum, 0, 1, kirin_pdev->name);
+	err = alloc_chrdev_region(&kirin_pdev->devnum, 0, PCIE_DEV_MINORS, kirin_pdev->name);
 	if (err < 0) {
 		dev_err(&pdev->dev, "chrdev register failed\n");
 		goto err_rel;
@@ -210,7 +221,8 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	/* this should be alloc by pcie scan phase */
 	/* pci_assign_irq(pdev); */
 	kirin_pdev->ioremap_base = ioremap_base;
-	err = request_irq(pdev->irq, kirin_pcie_isr, IRQF_SHARED, DRIVER_NAME, pdev);
+	sprintf(kirin_pdev->driver_name, DRIVER_NAME"%d", kirin_pdev->instance);
+	err = request_irq(pdev->irq, kirin_pcie_isr, IRQF_SHARED, kirin_pdev->driver_name, pdev);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to request IRQ\n");
 		goto err_rel;
@@ -223,8 +235,17 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 err_rel:
 	if (ioremap_base)
 		iounmap(ioremap_base);
+
+	if (kirin_pdev->instance != -1) {
+		ida_free(&kirin_pcie_ida, kirin_pdev->instance);
+		kirin_pdev->instance = -1;
+	}
+
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
+	if (kirin_pdev)
+		kfree(kirin_pdev);
+
 	return err;
 }
 
@@ -232,6 +253,11 @@ static void kirin_pcie_remove(struct pci_dev *pdev)
 {
 	struct kirin_pdriver_dev *kirin_pdev = dev_get_drvdata(&pdev->dev);
 	dev_info(&pdev->dev, "PCIe device removed\n");
+
+	if (kirin_pdev->instance != -1) {
+		ida_free(&kirin_pcie_ida, kirin_pdev->instance);
+		kirin_pdev->instance = -1;
+	}
 
 	/* free irq resource */
 	free_irq(pdev->irq, pdev);
