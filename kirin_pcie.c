@@ -212,11 +212,14 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	kirin_pdev->cpuaddr_out = dma_alloc_coherent(&pdev->dev, kirin_pdev->dma_out_size, &kirin_pdev->dma_addr_out, GFP_KERNEL);
 	if (kirin_pdev->cpuaddr_out == NULL) {
 		dev_err(&pdev->dev, "alloc dma out buff failed!\n");
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_in_size, kirin_pdev->cpuaddr_in, kirin_pdev->dma_addr_in);
 		goto err_rel;
 	}
 
 	err = alloc_chrdev_region(&kirin_pdev->devnum, 0, PCIE_DEV_MINORS, kirin_pdev->device_name);
 	if (err < 0) {
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_in_size, kirin_pdev->cpuaddr_in, kirin_pdev->dma_addr_in);
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_out_size, kirin_pdev->cpuaddr_out, kirin_pdev->dma_addr_out);
 		dev_err(&pdev->dev, "chrdev register failed\n");
 		goto err_rel;
 	}
@@ -225,6 +228,9 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	kirin_pdev->chrdev.owner = THIS_MODULE;
 	err = cdev_add(&kirin_pdev->chrdev, kirin_pdev->devnum, 1);
 	if (err < 0) {
+		unregister_chrdev_region(kirin_pdev->devnum, 1);
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_in_size, kirin_pdev->cpuaddr_in, kirin_pdev->dma_addr_in);
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_out_size, kirin_pdev->cpuaddr_out, kirin_pdev->dma_addr_out);
 		dev_err(&pdev->dev, "chrdev add failed\n");
 		goto err_rel;
 	}
@@ -234,6 +240,9 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	sprintf(class_name, CLASS_NAME"%d", kirin_pdev->instance);
 	kirin_pdev->class = class_create(THIS_MODULE, class_name);
 	if (IS_ERR(kirin_pdev->class)) {
+		unregister_chrdev_region(kirin_pdev->devnum, 1);
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_in_size, kirin_pdev->cpuaddr_in, kirin_pdev->dma_addr_in);
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_out_size, kirin_pdev->cpuaddr_out, kirin_pdev->dma_addr_out);
 		dev_err(&pdev->dev, "class device register failed!\n");
 		err = PTR_ERR(kirin_pdev->class);
 		goto err_rel;
@@ -242,12 +251,18 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	/* create the device for kirinpcie */
 	major = kirin_pdev->major = MAJOR(kirin_pdev->devnum);
 	if (major < 0) {
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_in_size, kirin_pdev->cpuaddr_in, kirin_pdev->dma_addr_in);
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_out_size, kirin_pdev->cpuaddr_out, kirin_pdev->dma_addr_out);
+		unregister_chrdev_region(kirin_pdev->devnum, 1);
+		class_destroy(kirin_pdev->class);
 		dev_err(&pdev->dev, "char major failed!\n");
 		goto err_rel;
 	}
 
 	kirin_pdev->device = device_create(kirin_pdev->class, NULL, MKDEV(major, 0), NULL, kirin_pdev->device_name);
 	if (IS_ERR(kirin_pdev->device)) {
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_in_size, kirin_pdev->cpuaddr_in, kirin_pdev->dma_addr_in);
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_out_size, kirin_pdev->cpuaddr_out, kirin_pdev->dma_addr_out);
 		class_destroy(kirin_pdev->class);
 		unregister_chrdev_region(kirin_pdev->devnum, 1);
 		dev_err(&pdev->dev, "device create failed\n");
@@ -260,6 +275,8 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	kirin_pdev->ioremap_base = ioremap_base;
 	err = request_irq(pdev->irq, kirin_pcie_isr, IRQF_SHARED, kirin_pdev->driver_name, pdev);
 	if (err) {
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_in_size, kirin_pdev->cpuaddr_in, kirin_pdev->dma_addr_in);
+		dma_free_coherent(&pdev->dev, kirin_pdev->dma_out_size, kirin_pdev->cpuaddr_out, kirin_pdev->dma_addr_out);
 		class_destroy(kirin_pdev->class);
 		unregister_chrdev_region(kirin_pdev->devnum, 1);
 		dev_err(&pdev->dev, "Failed to request IRQ\n");
