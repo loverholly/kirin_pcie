@@ -44,7 +44,7 @@ struct kirin_pdriver_dev {
 #define PCIE_DEV_MINORS		(1U << MINORBITS)
 
 static struct pci_device_id kirin_pcie_id_table[] = {
-	{ PCI_DEVICE(0x1234, 0x5678) },
+	{ PCI_DEVICE(0x10EE, 0x7024) },
 	{ 0, } /* 表结尾 */
 };
 MODULE_DEVICE_TABLE(pci, kirin_pcie_id_table);
