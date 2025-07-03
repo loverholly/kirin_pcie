@@ -140,6 +140,24 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 
 	dev_info(&pdev->dev, "PCIe device probed\n");
 
+	kirin_pdev = kzalloc(sizeof(*kirin_pdev), GFP_KERNEL);
+	if (kirin_pdev == NULL) {
+		dev_err(&pdev->dev, "alloc kirin pcie pdev failed!\n");
+		goto err_rel;
+	}
+
+	kirin_pdev->instance = -1;
+	/* register the cdev */
+	err = ida_alloc(&kirin_pcie_ida, GFP_KERNEL);
+	if (err < 0) {
+		dev_err(&pdev->dev, "alloc kirin pcie cdev failed!\n");
+		goto err_rel;
+	}
+
+	kirin_pdev->instance = devnum = err;
+	sprintf(kirin_pdev->name, PCIE_DEV_NAME"%d", devnum);
+	sprintf(kirin_pdev->driver_name, DRIVER_NAME"%d", kirin_pdev->instance);
+
 	/* enable pcie device */
 	err = pci_enable_device(pdev);
 	if (err) {
@@ -148,7 +166,7 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	}
 
 	/* alloc pcie pcie request */
-	err = pci_request_regions(pdev, DRIVER_NAME);
+	err = pci_request_regions(pdev, kirin_pdev->driver_name);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to request regions\n");
 		pci_disable_device(pdev);
@@ -173,12 +191,6 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 		goto err_rel;
 	}
 
-	kirin_pdev = kzalloc(sizeof(*kirin_pdev), GFP_KERNEL);
-	if (kirin_pdev == NULL) {
-		dev_err(&pdev->dev, "alloc kirin pcie pdev failed!\n");
-		goto err_rel;
-	}
-
 	/* alloc the dma recv buff and send buf */
 	kirin_pdev->dma_in_size = 128 * 1024;
 	kirin_pdev->cpuaddr_in = dma_alloc_coherent(&pdev->dev, kirin_pdev->dma_in_size, &kirin_pdev->dma_addr_in, GFP_KERNEL);
@@ -194,16 +206,7 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 		goto err_rel;
 	}
 
-	kirin_pdev->instance = -1;
-	/* register the cdev */
-	err = ida_alloc(&kirin_pcie_ida, GFP_KERNEL);
-	if (err < 0) {
-		dev_err(&pdev->dev, "alloc kirin pcie cdev failed!\n");
-		goto err_rel;
-	}
 
-	kirin_pdev->instance = devnum = err;
-	sprintf(kirin_pdev->name, PCIE_DEV_NAME"%d", devnum);
 	err = alloc_chrdev_region(&kirin_pdev->devnum, 0, PCIE_DEV_MINORS, kirin_pdev->name);
 	if (err < 0) {
 		dev_err(&pdev->dev, "chrdev register failed\n");
@@ -221,7 +224,6 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	/* this should be alloc by pcie scan phase */
 	/* pci_assign_irq(pdev); */
 	kirin_pdev->ioremap_base = ioremap_base;
-	sprintf(kirin_pdev->driver_name, DRIVER_NAME"%d", kirin_pdev->instance);
 	err = request_irq(pdev->irq, kirin_pcie_isr, IRQF_SHARED, kirin_pdev->driver_name, pdev);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to request IRQ\n");
