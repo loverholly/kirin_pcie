@@ -194,7 +194,7 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 
 	/* get the pcie bar address for cpu access */
 	io_addr = pci_resource_start(pdev, 0);
-	ioremap_base = ioremap(io_addr, 0x10000);
+	ioremap_base = ioremap(io_addr, 0x400000);
 	if (!ioremap_base) {
 		dev_err(&pdev->dev, "Failed to ioremap\n");
 		goto err_rel;
