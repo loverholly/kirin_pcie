@@ -201,15 +201,15 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	}
 
 	/* alloc the dma recv buff and send buf */
-	kirin_pdev->dma_in_size = 64 * 1024 * 1024; 
-	kirin_pdev->cpuaddr_in = dma_alloc_coherent(&pdev->dev, kirin_pdev->dma_in_size, &kirin_pdev->dma_addr_in, GFP_KERNEL);
+	kirin_pdev->dma_in_size = 64 * 1024 * 1024;
+	kirin_pdev->cpuaddr_in = dma_alloc_coherent(&pdev->dev, kirin_pdev->dma_in_size, &kirin_pdev->dma_addr_in, GFP_KERNEL | GFP_DMA32);
 	if (kirin_pdev->cpuaddr_in == NULL) {
 		dev_err(&pdev->dev, "alloc dma in buff failed!\n");
 		goto err_rel;
 	}
 
-	kirin_pdev->dma_out_size = 128 * 1024; 
-	kirin_pdev->cpuaddr_out = dma_alloc_coherent(&pdev->dev, kirin_pdev->dma_out_size, &kirin_pdev->dma_addr_out, GFP_KERNEL);
+	kirin_pdev->dma_out_size = 128 * 1024;
+	kirin_pdev->cpuaddr_out = dma_alloc_coherent(&pdev->dev, kirin_pdev->dma_out_size, &kirin_pdev->dma_addr_out, GFP_KERNEL | GFP_DMA32);
 	if (kirin_pdev->cpuaddr_out == NULL) {
 		dev_err(&pdev->dev, "alloc dma out buff failed!\n");
 		dma_free_coherent(&pdev->dev, kirin_pdev->dma_in_size, kirin_pdev->cpuaddr_in, kirin_pdev->dma_addr_in);
