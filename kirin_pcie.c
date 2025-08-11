@@ -141,7 +141,6 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	int err;
 	int devnum;
 	int major;
-	resource_size_t io_addr;
 	void __iomem *ioremap_base = NULL;
 	struct kirin_pdriver_dev *kirin_pdev = NULL;
 	char class_name[40];
@@ -197,8 +196,8 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	}
 
 	/* get the pcie bar address for cpu access */
-	io_addr = pci_resource_start(pdev, 0);
-	ioremap_base = ioremap(io_addr, pci_resource_len(pdev, 0));
+	u8 idx = 0;
+	ioremap_base = pci_iomap(pdev, idx, pci_resource_len(pdev, idx));
 	if (!ioremap_base) {
 		dev_err(&pdev->dev, "Failed to ioremap\n");
 		goto err_rel;
@@ -294,7 +293,7 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 
 err_rel:
 	if (ioremap_base)
-		iounmap(ioremap_base);
+		pci_iounmap(pdev, ioremap_base);
 
 	if (kirin_pdev->instance != -1) {
 		ida_free(&kirin_pcie_ida, kirin_pdev->instance);
@@ -323,7 +322,7 @@ static void kirin_pcie_remove(struct pci_dev *pdev)
 	free_irq(pdev->irq, pdev);
 
 	if (kirin_pdev->ioremap_base)
-		iounmap(kirin_pdev->ioremap_base);
+		pci_iounmap(pdev, kirin_pdev->ioremap_base);
 
 	device_destroy(kirin_pdev->class, MKDEV(kirin_pdev->devnum, 0));
 	class_destroy(kirin_pdev->class);
