@@ -19,6 +19,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/idr.h>
+#include <linux/dma-map-ops.h>
 #include "kirin_pcie.h"
 
 #define DMA_IN_SIZE (64 * 1024 * 1024)
@@ -205,7 +206,8 @@ static int kirin_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id
 
 	/* alloc the dma recv buff and send buf */
 	kirin_pdev->dma_in_size = DMA_IN_SIZE;
-	kirin_pdev->cpuaddr_in = dma_alloc_coherent(&pdev->dev, kirin_pdev->dma_in_size, &kirin_pdev->dma_addr_in, GFP_KERNEL | GFP_DMA32);
+	/* kirin_pdev->cpuaddr_in = dma_alloc_coherent(&pdev->dev, kirin_pdev->dma_in_size, &kirin_pdev->dma_addr_in, GFP_KERNEL | GFP_DMA32); */
+	kirin_pdev->cpuaddr_in = dma_alloc_from_contiguous(&pdev->dev, kirin_pdev->dma_in_size);
 	if (kirin_pdev->cpuaddr_in == NULL) {
 		dev_err(&pdev->dev, "alloc dma in buff failed!\n");
 		goto err_rel;
